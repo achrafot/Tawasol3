@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-import psycopg
 import openai
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -16,13 +15,13 @@ app = FastAPI()
 # Disable CORS. Do not remove this for full-stack development.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-@app.get("/healthz")
+@app.get("/healthz") 
 async def healthz():
     return {"status": "ok"}
 
@@ -30,27 +29,43 @@ async def healthz():
 async def generate_image(request: ImageRequest, settings=Depends(get_settings)):
     try:
         client = OpenAI(api_key=settings.openai_api_key)
-        
-        transformed_prompt = PromptTransformer.transform_prompt(
+
+        # Step 1: Upload reference image for Tawasol Symbols style
+        reference_url = "https://cdn.tawasol.mada.org.qa/data/wp-content/uploads/2021/10/HOMEPAGE-SYMBOLS-01-1-1200x945.png"
+        reference_id = PromptTransformer.upload_reference_image(reference_url)
+
+        # Step 2: Generate prompt with optional reference
+        result = PromptTransformer.transform_prompt(
             concept=request.concept,
-            language=request.language
+            language=request.language,
+            referenced_image_id=reference_id
         )
-        
+
+        prompt = result["prompt"]
+        referenced_ids = result["referenced_image_ids"]
+
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Generated prompt is empty or invalid.")
+
+        print(f"[Prompt Used] {repr(prompt)}")
+        print(f"[Reference ID] {referenced_ids}")
+
+        # Step 3: Generate image using DALL·E 3
         response = client.images.generate(
             model="dall-e-3",
-            prompt=transformed_prompt,
+            prompt=prompt,
             size="1024x1024",
             quality="standard",
             n=1,
         )
-        
+
         image_url = response.data[0].url
-        
+
         return ImageResponse(
-            image_url=image_url,
-            prompt_used=transformed_prompt
+            image_url=image_url, 
+            prompt_used=prompt
         )
-    except openai.OpenAIError as e:
-        raise HTTPException(status_code=500, detail=f"OpenAI API error: {str(e)}")
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+        print(f"[Error] {str(e)}")
+        raise HTTPException(status_code=500, detail=f"OpenAI API error: {str(e)}")

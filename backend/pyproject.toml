@@ -12,6 +12,7 @@ psycopg = {extras = ["binary"], version = "^3.2.6"}
 openai = "^1.74.0"
 python-dotenv = "^1.1.0"
 pydantic-settings = "^2.8.1"
+requests = "^2.32.3"
 
 
 [build-system]
